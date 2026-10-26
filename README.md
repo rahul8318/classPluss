@@ -28,12 +28,17 @@ ClassPulse combines a live classroom interaction product (inspired by Wooclap) w
    - Live room sessions, session-code/QR joining
    - Live quizzes, polls, word clouds, brainstorming, prioritization, timers, random student picker
 
-3. **Part 3: Frontend Integration**
-   - React + Vite client connecting to both independent backends
+3. **Part 3: Frontend Client (Learning Workspace & Live Classroom Hub)** — Located in [`/frontend`](./frontend)
+   - React 18, Vite 5, Tailwind CSS, Lucide Icons, React Router v6
+   - Modern, responsive teacher and student portal
+   - Dual-backend connection architecture (MERN REST API + Spring Boot REST/WS)
+   - Complete Course Workspace: Modules, Document indexing, Assignments with receipt preview, Assessments, Attendance with timer codes, AI Study Assistant with citations, and Live Classroom launcher
 
 ---
 
-## 🚀 Getting Started with the MERN Backend
+## 🚀 Getting Started
+
+### 1. MERN Backend
 
 ```bash
 # Navigate to the backend directory
@@ -45,16 +50,38 @@ npm install
 # Setup environment variables
 cp .env.example .env
 
-# Run local development server
+# Run local development server (Port 5000)
 npm run dev
 
-# Run automated tests
+# Run automated tests (28 tests across 6 suites)
 npm test
 ```
 
 - API Base: `http://localhost:5000/api`
 - Interactive Swagger Docs: `http://localhost:5000/api/docs`
 - Spring Boot Integration Spec: [`backend/docs/SPRING_BOOT_INTEGRATION_SPEC.md`](./backend/docs/SPRING_BOOT_INTEGRATION_SPEC.md)
+
+### 2. React Frontend
+
+```bash
+# Navigate to the frontend directory
+cd frontend
+
+# Install dependencies
+npm install
+
+# Setup environment variables
+cp .env.example .env
+
+# Run Vite development server (Port 5173)
+npm run dev
+
+# Build for production
+npm run build
+```
+
+- Frontend URL: `http://localhost:5173`
+- Pre-configured demo teacher and student accounts available directly on the Login screen!
 
 ---
 
