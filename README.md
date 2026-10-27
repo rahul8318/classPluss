@@ -50,6 +50,9 @@ npm install
 # Setup environment variables
 cp .env.example .env
 
+# Seed sample data (Demo courses, users, lecture notes, vector embeddings, quizzes)
+npm run seed
+
 # Run local development server (Port 5000)
 npm run dev
 
@@ -60,6 +63,10 @@ npm test
 - API Base: `http://localhost:5000/api`
 - Interactive Swagger Docs: `http://localhost:5000/api/docs`
 - Spring Boot Integration Spec: [`backend/docs/SPRING_BOOT_INTEGRATION_SPEC.md`](./backend/docs/SPRING_BOOT_INTEGRATION_SPEC.md)
+
+#### Demo Credentials
+- **Teacher**: `jane.smith@classpulse.edu` / `Password123!`
+- **Student**: `alex.j@classpulse.edu` / `Password123!`
 
 ### 2. React Frontend
 
