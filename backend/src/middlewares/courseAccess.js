@@ -1,13 +1,46 @@
 const Course = require('../models/Course');
 const Enrollment = require('../models/Enrollment');
+const Resource = require('../models/Resource');
+const Assignment = require('../models/Assignment');
+const Assessment = require('../models/Assessment');
+const CourseModule = require('../models/CourseModule');
 const ApiError = require('../utils/apiError');
+
+/**
+ * Helper to resolve courseId from route params, body, query, or linked entities
+ */
+const resolveCourseId = async (req) => {
+  if (req.params.courseId) return req.params.courseId;
+  if (req.params.id) return req.params.id;
+  if (req.body && req.body.courseId) return req.body.courseId;
+  if (req.query && req.query.courseId) return req.query.courseId;
+
+  if (req.params.resourceId) {
+    const resource = await Resource.findById(req.params.resourceId).select('courseId');
+    if (resource) return resource.courseId;
+  }
+  if (req.params.assignmentId) {
+    const assignment = await Assignment.findById(req.params.assignmentId).select('courseId');
+    if (assignment) return assignment.courseId;
+  }
+  if (req.params.assessmentId) {
+    const assessment = await Assessment.findById(req.params.assessmentId).select('courseId');
+    if (assessment) return assessment.courseId;
+  }
+  if (req.params.moduleId) {
+    const courseModule = await CourseModule.findById(req.params.moduleId).select('courseId');
+    if (courseModule) return courseModule.courseId;
+  }
+
+  return null;
+};
 
 /**
  * Verify that user is either the teacher of the course OR an active enrolled student (or admin)
  */
 const verifyCourseAccess = async (req, res, next) => {
   try {
-    const courseId = req.params.courseId || req.params.id || req.body.courseId;
+    const courseId = await resolveCourseId(req);
     if (!courseId) {
       return next(ApiError.badRequest('courseId parameter is required'));
     }
@@ -53,7 +86,7 @@ const verifyCourseAccess = async (req, res, next) => {
  */
 const verifyTeacherCourseOwnership = async (req, res, next) => {
   try {
-    const courseId = req.params.courseId || req.params.id || req.body.courseId;
+    const courseId = await resolveCourseId(req);
     if (!courseId) {
       return next(ApiError.badRequest('courseId parameter is required'));
     }

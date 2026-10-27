@@ -39,10 +39,10 @@ router.use('/', attendanceRoutes);
 router.use('/', aiRoutes);
 router.use('/ai', aiRoutes);
 
-// Base course routes and modules/resources
-router.use('/courses', courseRoutes);
+// Course sub-resources mounted before generic /courses
 router.use('/courses/:courseId/modules', moduleRoutes);
 router.use('/courses/:courseId/resources', resourceRoutes);
+router.use('/courses', courseRoutes);
 router.use('/resources', resourceRoutes);
 router.use('/submissions', submissionRoutes);
 

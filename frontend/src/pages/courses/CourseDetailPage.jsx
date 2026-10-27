@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { coursesApi } from '../../api/courses';
 import { assignmentsApi } from '../../api/assignments';
@@ -36,11 +36,24 @@ import LoadingSpinner from '../../components/common/LoadingSpinner';
 
 export default function CourseDetailPage() {
   const { courseId } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user, isTeacher } = useAuth();
 
   const [course, setCourse] = useState(null);
-  const [activeTab, setActiveTab] = useState('modules');
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'modules');
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam && tabParam !== activeTab) {
+      setActiveTab(tabParam);
+    }
+  }, [searchParams]);
+
+  const switchTab = (tab) => {
+    setActiveTab(tab);
+    setSearchParams({ tab });
+  };
 
   // Data states
   const [modules, setModules] = useState([]);
@@ -333,14 +346,14 @@ export default function CourseDetailPage() {
           {/* Quick Header Actions */}
           <div className="flex items-center space-x-3">
             <button
-              onClick={() => setActiveTab('live')}
+              onClick={() => switchTab('live')}
               className="flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-xs font-bold shadow-md shadow-rose-500/20 transition-all"
             >
               <Radio className="w-4 h-4 animate-pulse" />
               <span>{isTeacher ? 'Launch Live Room' : 'Join Live Room'}</span>
             </button>
             <button
-              onClick={() => setActiveTab('ai')}
+              onClick={() => switchTab('ai')}
               className="flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-brand-50 hover:bg-brand-100 text-brand-700 text-xs font-bold border border-brand-200 transition-all"
             >
               <Bot className="w-4 h-4" />
@@ -357,7 +370,7 @@ export default function CourseDetailPage() {
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => switchTab(tab.id)}
                 className={`flex items-center space-x-2 py-3 px-4 border-b-2 font-bold text-xs whitespace-nowrap transition-all ${
                   isActive
                     ? 'border-brand-600 text-brand-700 bg-brand-50/50 rounded-t-xl'

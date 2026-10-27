@@ -9,6 +9,8 @@ import RegisterPage from './pages/auth/RegisterPage';
 import DashboardPage from './pages/dashboard/DashboardPage';
 import CoursesPage from './pages/courses/CoursesPage';
 import CourseDetailPage from './pages/courses/CourseDetailPage';
+import AssignmentsPage from './pages/assignments/AssignmentsPage';
+import AssessmentsPage from './pages/assessments/AssessmentsPage';
 import TakeAssessmentPage from './pages/assessments/TakeAssessmentPage';
 import StudyAssistantPage from './pages/ai/StudyAssistantPage';
 import QuestionGeneratorPage from './pages/ai/QuestionGeneratorPage';
@@ -54,8 +56,8 @@ export default function App() {
             <Route index element={<DashboardPage />} />
             <Route path="courses" element={<CoursesPage />} />
             <Route path="courses/:courseId" element={<CourseDetailPage />} />
-            <Route path="assignments" element={<CoursesPage />} />
-            <Route path="assessments" element={<CoursesPage />} />
+            <Route path="assignments" element={<AssignmentsPage />} />
+            <Route path="assessments" element={<AssessmentsPage />} />
             <Route path="assessments/:assessmentId/take" element={<TakeAssessmentPage />} />
             <Route path="attendance" element={<AttendancePage />} />
             <Route path="ai/study" element={<StudyAssistantPage />} />
