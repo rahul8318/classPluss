@@ -28,11 +28,14 @@ import {
   Check,
   Send,
   RefreshCw,
-  Award
+  Award,
+  FileDown,
+  ShieldCheck
 } from 'lucide-react';
 import Badge from '../../components/common/Badge';
 import Modal from '../../components/common/Modal';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
+import { exportAttendancePdf } from '../../utils/attendancePdfExport';
 
 export default function CourseDetailPage() {
   const { courseId } = useParams();
@@ -259,6 +262,16 @@ export default function CourseDetailPage() {
     } catch (err) {
       alert(err.message || 'Check-in failed');
     }
+  };
+
+  const handleExportAttendancePdf = () => {
+    if (!course) return;
+    exportAttendancePdf({
+      course,
+      report: attendanceReport,
+      records: attendanceRecords,
+      totalClasses: attendanceRecords.length,
+    });
   };
 
   const handleSendChatMessage = async (e) => {
@@ -624,34 +637,58 @@ export default function CourseDetailPage() {
             <div className="space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                  <h3 className="text-lg font-bold text-slate-900">Attendance Register</h3>
-                  <p className="text-xs text-slate-500">Official course roster check-ins and time-limited codes</p>
+                  <div className="flex items-center space-x-2">
+                    <h3 className="text-lg font-bold text-slate-900">Attendance Register & Security</h3>
+                    <Badge variant="primary">Official Register</Badge>
+                  </div>
+                  <p className="text-xs text-slate-500">Official course roster check-ins, anti-proxy verification & PDF exports</p>
                 </div>
-                {isTeacher ? (
-                  <button
-                    onClick={handleGenerateAttendanceCode}
-                    className="px-4 py-2 rounded-xl bg-brand-600 text-white text-xs font-bold hover:bg-brand-700 shadow-sm"
-                  >
-                    Generate Session Check-In Code
-                  </button>
-                ) : (
-                  <form onSubmit={handleStudentCheckIn} className="flex items-center space-x-2">
-                    <input
-                      type="text"
-                      required
-                      placeholder="ENTER 6-DIGIT CODE"
-                      value={studentCodeInput}
-                      onChange={(e) => setStudentCodeInput(e.target.value)}
-                      className="px-3 py-1.5 rounded-xl border border-slate-200 font-mono uppercase text-xs font-bold tracking-widest focus:outline-none focus:ring-2 focus:ring-brand-500"
-                    />
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {isTeacher && (
                     <button
-                      type="submit"
-                      className="px-4 py-1.5 rounded-xl bg-brand-600 text-white text-xs font-bold hover:bg-brand-700 shadow-sm"
+                      onClick={handleExportAttendancePdf}
+                      className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-sm transition-all"
                     >
-                      Check In
+                      <FileDown className="w-3.5 h-3.5 text-brand-300" />
+                      <span>Export PDF</span>
                     </button>
-                  </form>
-                )}
+                  )}
+
+                  <Link
+                    to="/attendance"
+                    className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-brand-700 text-xs font-bold shadow-sm transition-all"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Open Full Register & Modifier</span>
+                  </Link>
+
+                  {isTeacher ? (
+                    <button
+                      onClick={handleGenerateAttendanceCode}
+                      className="px-4 py-2 rounded-xl bg-brand-600 text-white text-xs font-bold hover:bg-brand-700 shadow-sm"
+                    >
+                      Generate Check-In Code
+                    </button>
+                  ) : (
+                    <form onSubmit={handleStudentCheckIn} className="flex items-center space-x-2">
+                      <input
+                        type="text"
+                        required
+                        placeholder="ENTER 6-DIGIT CODE"
+                        value={studentCodeInput}
+                        onChange={(e) => setStudentCodeInput(e.target.value)}
+                        className="px-3 py-1.5 rounded-xl border border-slate-200 font-mono uppercase text-xs font-bold tracking-widest focus:outline-none focus:ring-2 focus:ring-brand-500"
+                      />
+                      <button
+                        type="submit"
+                        className="px-4 py-1.5 rounded-xl bg-brand-600 text-white text-xs font-bold hover:bg-brand-700 shadow-sm"
+                      >
+                        Check In
+                      </button>
+                    </form>
+                  )}
+                </div>
               </div>
 
               {/* Active Code Display for Teacher */}
@@ -676,12 +713,13 @@ export default function CourseDetailPage() {
                       <th className="px-4 py-3">Title / Source</th>
                       <th className="px-4 py-3">Status</th>
                       <th className="px-4 py-3">Records Count</th>
+                      <th className="px-4 py-3 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
                     {attendanceRecords.length === 0 ? (
                       <tr>
-                        <td colSpan={4} className="px-4 py-8 text-center text-slate-400">
+                        <td colSpan={5} className="px-4 py-8 text-center text-slate-400">
                           No attendance records stored yet.
                         </td>
                       </tr>
@@ -696,6 +734,15 @@ export default function CourseDetailPage() {
                             </Badge>
                           </td>
                           <td className="px-4 py-3 font-bold text-slate-700">{rec.records?.length || 0} Students</td>
+                          <td className="px-4 py-3 text-right">
+                            <Link
+                              to="/attendance"
+                              className="inline-flex items-center space-x-1 text-brand-600 hover:text-brand-800 font-bold text-xs"
+                            >
+                              <span>{isTeacher ? 'Inspect & Modify' : 'View Details'}</span>
+                              <ExternalLink className="w-3 h-3" />
+                            </Link>
+                          </td>
                         </tr>
                       ))
                     )}

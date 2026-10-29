@@ -21,6 +21,22 @@ const studentAttendanceEntrySchema = new mongoose.Schema(
       enum: ['manual', 'code', 'spring_boot_session'],
       default: 'manual',
     },
+    checkInIp: {
+      type: String,
+      default: '',
+    },
+    deviceInfo: {
+      type: String,
+      default: '',
+    },
+    isProxyWarning: {
+      type: Boolean,
+      default: false,
+    },
+    proxyReason: {
+      type: String,
+      default: '',
+    },
     editedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',

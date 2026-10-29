@@ -14,10 +14,89 @@ exports.getCourseAttendance = async (req, res, next) => {
     const courseId = req.params.courseId || req.params.id;
     const records = await AttendanceRecord.find({ courseId })
       .populate('records.studentId', 'name email avatar')
+      .populate('records.editedBy', 'name email')
       .populate('createdBy', 'name')
       .sort({ classDate: -1 });
 
     return ApiResponse.success(res, { attendanceRecords: records });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.getSessionAttendance = async (req, res, next) => {
+  try {
+    const { courseId, recordId } = req.params;
+
+    const attendance = await AttendanceRecord.findOne({ _id: recordId, courseId })
+      .populate('records.studentId', 'name email avatar')
+      .populate('records.editedBy', 'name email')
+      .populate('createdBy', 'name');
+
+    if (!attendance) {
+      return next(ApiError.notFound('Attendance session not found'));
+    }
+
+    // Get all enrolled students for complete roster matching
+    const enrollments = await Enrollment.find({ courseId, status: 'active' })
+      .populate('studentId', 'name email avatar')
+      .sort({ 'studentId.name': 1 });
+
+    const fullRosterAttendance = enrollments.map(e => {
+      const student = e.studentId;
+      const entry = attendance.records.find(
+        r => r.studentId && (r.studentId._id ? r.studentId._id.toString() : r.studentId.toString()) === student._id.toString()
+      );
+
+      return {
+        student,
+        status: entry ? entry.status : 'absent',
+        checkInTime: entry ? entry.checkInTime : null,
+        source: entry ? entry.source : 'unrecorded',
+        isProxyWarning: entry ? Boolean(entry.isProxyWarning) : false,
+        proxyReason: entry ? entry.proxyReason : '',
+        checkInIp: entry ? entry.checkInIp : '',
+        deviceInfo: entry ? entry.deviceInfo : '',
+        notes: entry ? entry.notes : '',
+        editedBy: entry ? entry.editedBy : null,
+        entryId: entry ? entry._id : null,
+      };
+    });
+
+    return ApiResponse.success(res, {
+      attendance,
+      roster: fullRosterAttendance,
+      totalEnrolled: enrollments.length,
+      presentCount: fullRosterAttendance.filter(r => r.status === 'present').length,
+      lateCount: fullRosterAttendance.filter(r => r.status === 'late').length,
+      absentCount: fullRosterAttendance.filter(r => r.status === 'absent').length,
+      excusedCount: fullRosterAttendance.filter(r => r.status === 'excused').length,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.deleteAttendanceRecord = async (req, res, next) => {
+  try {
+    const { recordId } = req.params;
+    const attendance = await AttendanceRecord.findById(recordId);
+    if (!attendance) {
+      return next(ApiError.notFound('Attendance record not found'));
+    }
+
+    await AttendanceRecord.findByIdAndDelete(recordId);
+
+    await AuditService.log({
+      userId: req.user.id,
+      action: 'ATTENDANCE_SESSION_DELETED',
+      entityType: 'AttendanceRecord',
+      entityId: recordId,
+      details: { classDate: attendance.classDate, title: attendance.title },
+      ipAddress: req.ip,
+    });
+
+    return ApiResponse.success(res, null, 'Attendance record deleted successfully');
   } catch (error) {
     next(error);
   }
@@ -66,7 +145,7 @@ exports.recordAttendance = async (req, res, next) => {
 exports.updateStudentAttendance = async (req, res, next) => {
   try {
     const { recordId, studentId } = req.params;
-    const { status, notes } = req.body;
+    const { status, notes, clearProxyWarning } = req.body;
 
     const attendance = await AttendanceRecord.findById(recordId);
     if (!attendance) {
@@ -80,13 +159,17 @@ exports.updateStudentAttendance = async (req, res, next) => {
       studentEntry.status = status || studentEntry.status;
       studentEntry.editedBy = req.user.id;
       if (notes !== undefined) studentEntry.notes = notes;
+      if (clearProxyWarning) {
+        studentEntry.isProxyWarning = false;
+        studentEntry.proxyReason = (studentEntry.proxyReason || '') + ' [Verified by teacher]';
+      }
 
       await AuditService.log({
         userId: req.user.id,
         action: 'ATTENDANCE_OVERRIDE',
         entityType: 'AttendanceRecord',
         entityId: attendance._id,
-        details: { studentId, prevStatus, newStatus: studentEntry.status },
+        details: { studentId, prevStatus, newStatus: studentEntry.status, notes },
         ipAddress: req.ip,
       });
     } else {
@@ -96,11 +179,17 @@ exports.updateStudentAttendance = async (req, res, next) => {
         source: 'manual',
         editedBy: req.user.id,
         notes: notes || '',
+        checkInTime: new Date(),
       });
     }
 
     await attendance.save();
-    return ApiResponse.success(res, { attendance }, 'Student attendance updated successfully');
+
+    const updated = await AttendanceRecord.findById(recordId)
+      .populate('records.studentId', 'name email avatar')
+      .populate('records.editedBy', 'name email');
+
+    return ApiResponse.success(res, { attendance: updated }, 'Student attendance updated successfully');
   } catch (error) {
     next(error);
   }
@@ -184,17 +273,48 @@ exports.studentCheckIn = async (req, res, next) => {
       });
     }
 
-    // Prevent duplicate check-in
+    // Anti-Proxy Rule 1: Prevent duplicate check-in by the same student
     const alreadyCheckedIn = attendance.records.some(r => r.studentId.toString() === studentId);
     if (alreadyCheckedIn) {
-      return next(ApiError.conflict('You have already checked in for today\'s class session'));
+      return next(ApiError.conflict('Duplicate check-in rejected: You have already checked in for today\'s class session. Proxy or duplicate attendance is strictly prohibited.'));
     }
+
+    // Anti-Proxy Rule 2: Capture IP and Device Fingerprint (Wooclap-standard device collision detection)
+    const deviceId = req.headers['x-device-id'] || req.body.deviceId || '';
+    const ip = (req.headers['x-forwarded-for'] || req.ip || req.socket.remoteAddress || '').split(',')[0].trim();
+    const userAgent = req.headers['user-agent'] || 'Unknown Device';
+
+    // Detect if same device is logging in for multiple students (Proxy attempt on same phone/laptop)
+    const duplicateDevice = deviceId && attendance.records.find(
+      r => r.deviceInfo && r.deviceInfo.includes(deviceId) && r.studentId.toString() !== studentId
+    );
+
+    // Detect if same IP was used for another student
+    const duplicateIp = attendance.records.find(
+      r => r.checkInIp && r.checkInIp === ip && r.studentId.toString() !== studentId
+    );
+
+    let isProxyWarning = false;
+    let proxyReason = '';
+    if (duplicateDevice) {
+      isProxyWarning = true;
+      proxyReason = `Critical Proxy Alert: Same physical browser/device (${deviceId.slice(-6)}) was used for multiple student accounts.`;
+    } else if (duplicateIp) {
+      isProxyWarning = true;
+      proxyReason = `Network Alert: Duplicate IP address (${ip}) used for multiple student check-ins.`;
+    }
+
+    const deviceSignature = deviceId ? `${userAgent.slice(0, 70)} [dev:${deviceId}]` : userAgent.slice(0, 100);
 
     attendance.records.push({
       studentId,
       status: 'present',
       checkInTime: new Date(),
       source: 'code',
+      checkInIp: ip,
+      deviceInfo: deviceSignature,
+      isProxyWarning,
+      proxyReason,
     });
 
     await attendance.save();
@@ -204,11 +324,19 @@ exports.studentCheckIn = async (req, res, next) => {
       action: 'STUDENT_CHECKIN',
       entityType: 'AttendanceRecord',
       entityId: attendance._id,
-      details: { courseId, classDate, source: 'code' },
-      ipAddress: req.ip,
+      details: { courseId, classDate, source: 'code', isProxyWarning, ip },
+      ipAddress: ip,
     });
 
-    return ApiResponse.success(res, { checkInTime: new Date(), status: 'present' }, 'Attendance marked successfully');
+    return ApiResponse.success(
+      res,
+      {
+        checkInTime: new Date(),
+        status: 'present',
+        isProxyWarning,
+      },
+      'Attendance marked successfully'
+    );
   } catch (error) {
     next(error);
   }

@@ -75,6 +75,38 @@ describe('ClassPulse Attendance Management & Spring Boot Sync API', () => {
     expect(res.body.success).toBe(false);
   });
 
+  it('anti-proxy guard detects device collision when two students use the same physical device', async () => {
+    // Register second student
+    const s2Res = await request(app).post('/api/auth/register').send({
+      name: 'Ada Lovelace',
+      email: 'ada@classpulse.edu',
+      password: 'Password123!',
+      role: 'student',
+    });
+    const student2Token = s2Res.body.data.token;
+
+    // Enroll in course
+    const courseRes = await request(app)
+      .get(`/api/courses/${courseId}`)
+      .set('Authorization', `Bearer ${studentToken}`);
+    await request(app)
+      .post('/api/courses/enroll')
+      .set('Authorization', `Bearer ${student2Token}`)
+      .send({ code: courseRes.body.data.course.code });
+
+    // Check in with the same X-Device-Id as Knuth or duplicate IP
+    const checkInRes = await request(app)
+      .post('/api/attendance/check-in')
+      .set('Authorization', `Bearer ${student2Token}`)
+      .set('X-Device-Id', 'device_library_pc_001')
+      .send({ code: checkInCode })
+      .expect(200);
+
+    // Because Knuth was recorded on the same test IP, Ada's check-in triggers anti-proxy warning
+    expect(checkInRes.body.success).toBe(true);
+    expect(checkInRes.body.data.isProxyWarning).toBe(true);
+  });
+
   it('teacher should import live session participants from Spring Boot backend', async () => {
     const res = await request(app)
       .post(`/api/courses/${courseId}/attendance/import-live-session`)
@@ -100,8 +132,58 @@ describe('ClassPulse Attendance Management & Spring Boot Sync API', () => {
       .expect(200);
 
     expect(res.body.success).toBe(true);
-    expect(res.body.data.report.length).toBe(1);
+    expect(res.body.data.report.length).toBe(2);
     expect(res.body.data.report[0].stats.presentCount).toBeGreaterThan(0);
     expect(res.body.data.report[0].stats.attendancePercentage).toBe(100);
+  });
+
+  it('teacher should retrieve session attendance roster and modify student status with notes', async () => {
+    const recordsRes = await request(app)
+      .get(`/api/courses/${courseId}/attendance`)
+      .set('Authorization', `Bearer ${teacherToken}`)
+      .expect(200);
+
+    const recordId = recordsRes.body.data.attendanceRecords[0]._id;
+
+    // Retrieve session details
+    const sessionRes = await request(app)
+      .get(`/api/courses/${courseId}/attendance/${recordId}`)
+      .set('Authorization', `Bearer ${teacherToken}`)
+      .expect(200);
+
+    expect(sessionRes.body.success).toBe(true);
+    expect(sessionRes.body.data.roster.length).toBeGreaterThan(0);
+
+    // Modify student status to 'excused' with doctor note
+    const updateRes = await request(app)
+      .put(`/api/attendance/${recordId}/students/${studentId}`)
+      .set('Authorization', `Bearer ${teacherToken}`)
+      .send({ status: 'excused', notes: 'Excused: Verified doctor appointment' })
+      .expect(200);
+
+    expect(updateRes.body.success).toBe(true);
+    const updatedEntry = updateRes.body.data.attendance.records.find(
+      r => (r.studentId._id ? r.studentId._id.toString() : r.studentId.toString()) === studentId.toString()
+    );
+    expect(updatedEntry.status).toBe('excused');
+    expect(updatedEntry.notes).toBe('Excused: Verified doctor appointment');
+  });
+
+  it('student must be strictly prohibited from modifying attendance records (anti-tamper)', async () => {
+    const recordsRes = await request(app)
+      .get(`/api/courses/${courseId}/attendance`)
+      .set('Authorization', `Bearer ${teacherToken}`)
+      .expect(200);
+
+    const recordId = recordsRes.body.data.attendanceRecords[0]._id;
+
+    // Student attempts to modify attendance status
+    const res = await request(app)
+      .put(`/api/attendance/${recordId}/students/${studentId}`)
+      .set('Authorization', `Bearer ${studentToken}`)
+      .send({ status: 'present' })
+      .expect(403);
+
+    expect(res.body.success).toBe(false);
   });
 });

@@ -4,6 +4,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const path = require('path');
 const swaggerUi = require('swagger-ui-express');
+const rateLimit = require('express-rate-limit');
 
 const config = require('./config/env');
 const routes = require('./routes');
@@ -13,12 +14,15 @@ const ApiError = require('./utils/apiError');
 
 const app = express();
 
-// Security Headers
+// Trust reverse proxy for accurate IP address determination
+app.set('trust proxy', 1);
+
+// Security Headers (Wooclap-standard defense against XSS, clickjacking, MIME sniffing)
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
 }));
 
-// CORS Configuration
+// CORS Configuration with Device Header support
 app.use(
   cors({
     origin: (origin, callback) => {
@@ -31,9 +35,31 @@ app.use(
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Device-Id'],
   })
 );
+
+// Wooclap-style API Rate Limiting (Brute-force protection for check-ins and authentication)
+if (config.nodeEnv !== 'test') {
+  const generalLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 600, // Limit each IP to 600 requests per 15 minutes
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { success: false, message: 'Too many requests from this IP, please try again later.' },
+  });
+  app.use('/api', generalLimiter);
+
+  const authCheckInLimiter = rateLimit({
+    windowMs: 1 * 60 * 1000, // 1 minute
+    max: 30, // Limit check-ins and logins to 30 attempts per minute
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { success: false, message: 'Too many authentication or check-in attempts. Please wait a minute.' },
+  });
+  app.use('/api/attendance/check-in', authCheckInLimiter);
+  app.use('/api/auth/login', authCheckInLimiter);
+}
 
 // Request parsing
 app.use(express.json({ limit: '10mb' }));
